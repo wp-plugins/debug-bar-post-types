@@ -11,7 +11,7 @@
  * @package		Debug Bar Pretty Output
  * @author		Juliette Reinders Folmer <wpplugins_nospam@adviesenzo.nl>
  * @link		https://github.com/jrfnl/debug-bar-pretty-output
- * @version		1.3
+ * @version		1.4
  *
  * @copyright	2013 Juliette Reinders Folmer
  * @license		http://creativecommons.org/licenses/GPL/2.0/ GNU General Public License, version 2 or higher
@@ -23,11 +23,47 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 	 */
 	class Debug_Bar_Pretty_Output {
 
-		const VERSION = '1.3';
+		const VERSION = '1.4';
 
 		const NAME = 'db-pretty-output';
 
 		const TBODY_MAX = 10;
+
+		/**
+		 * @var bool|int Whether to limit how deep the variable printing will recurse into an array/object
+		 *               Set to a positive integer to limit the recursion depth to that depth.
+		 *               Defaults to false.
+		 *
+		 * @since 1.4
+		 */
+		protected static $limit_recursion = false;
+
+
+		/**
+		 * Set the recursion limit.
+		 *
+		 * Always make sure you also unset the limit after you're done with this class so as not to impact
+		 * other plugins which may be using this printing class.
+		 *
+		 * @since 1.4
+		 *
+		 * @param int $depth
+		 */
+		public static function limit_recursion( $depth ) {
+			if ( is_int( $depth ) && $depth > 0 ) {
+				self::$limit_recursion = $depth;
+			}
+		}
+
+
+		/**
+		 * Reset the recusion limit to it's default (unlimited).
+		 *
+		 * @since 1.4
+		 */
+		public static function unset_recursion_limit() {
+			self::$limit_recursion = false;
+		}
 
 
 		/**
@@ -40,52 +76,60 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @param   bool    $escape     (optional) Whether to character escape the textual output
 		 * @param   string  $space      (internal) Indentation spacing
 		 * @param   bool    $short      (internal) Short or normal annotation
+		 * @param   int     $depth      (internal) The depth of the current recursion
 		 * @return	string
 		 */
-		public static function get_output( $var, $title = '', $escape = true, $space = '', $short = false ) {
+		public static function get_output( $var, $title = '', $escape = true, $space = '', $short = false, $depth = 0 ) {
 
 			$output = '';
-			
+
 			if ( $space === '' ) {
 				$output .= '<div class="db-pretty-var">';
 			}
 			if ( is_string( $title ) && $title !== '' ) {
-				$output .= '<h4 style="clear: both;">' . ( $escape === true ? esc_html( $title ) : $title ) . "</h4>\n";
+				$output .= '<h4 style="clear: both;">' . ( ( $escape === true ) ? esc_html( $title ) : $title ) . "</h4>\n";
 			}
 
 			if ( is_array( $var ) ) {
-				if( $var !== array() ) {
+				if ( $var !== array() ) {
 					$output .= 'Array: <br />' . $space . '(<br />';
-					if ( $short !== true ) {
-						$spacing = $space . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+					if ( is_int( self::$limit_recursion ) && $depth > self::$limit_recursion ) {
+						$output .= '... ( ' . sprintf( __( 'output limited at recursion depth %d', self::NAME ), self::$limit_recursion ) . ')<br />';
 					}
 					else {
-						$spacing = $space . '&nbsp;&nbsp;';
-					}
-					foreach ( $var as $key => $value ) {
-						$output .= $spacing . '[' . ( $escape === true ? esc_html( $key ): $key );
 						if ( $short !== true ) {
-							$output .= ' ';
-							switch ( true ) {
-								case ( is_string( $key ) ) :
-									$output .= '<span style="color: #336600;;"><b><i>(string)</i></b></span>';
-									break;
-								case ( is_int( $key ) ) :
-									$output .= '<span style="color: #FF0000;"><b><i>(int)</i></b></span>';
-									break;
-								case ( is_float( $key ) ) :
-									$output .= '<span style="color: #990033;"><b><i>(float)</i></b></span>';
-									break;
-								default:
-									/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-									$output .= '(' . __( 'unknown', self::NAME ) .')';
-									break;
-							}
+							$spacing = $space . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
 						}
-						$output .= '] => ';
-						$output .= self::get_output( $value, '', $escape, $spacing, $short );
+						else {
+							$spacing = $space . '&nbsp;&nbsp;';
+						}
+						foreach ( $var as $key => $value ) {
+							$output .= $spacing . '[' . ( ( $escape === true ) ? esc_html( $key ) : $key );
+							if ( $short !== true ) {
+								$output .= ' ';
+								switch ( true ) {
+									case ( is_string( $key ) ) :
+										$output .= '<span style="color: #336600;;"><b><i>(string)</i></b></span>';
+										break;
+	
+									case ( is_int( $key ) ) :
+										$output .= '<span style="color: #FF0000;"><b><i>(int)</i></b></span>';
+										break;
+	
+									case ( is_float( $key ) ) :
+										$output .= '<span style="color: #990033;"><b><i>(float)</i></b></span>';
+										break;
+	
+									default:
+										$output .= '(' . __( 'unknown', self::NAME ) .')';
+										break;
+								}
+							}
+							$output .= '] => ';
+							$output .= self::get_output( $value, '', $escape, $spacing, $short, ++$depth );
+						}
+						unset( $key, $value );
 					}
-					unset( $key, $value );
 
 					$output .= $space . ')<br />';
 				}
@@ -99,7 +143,7 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 					$output .= '<b><i>string[' . strlen( $var ) . ']</i></b> : ';
 				}
 				$output .= '&lsquo;'
-					. ( $escape === true ? str_replace( '  ', ' &nbsp;', esc_html( $var ) ) : str_replace( '  ', ' &nbsp;', $var ) )
+					. ( ( $escape === true ) ? str_replace( '  ', ' &nbsp;', esc_html( $var ) ) : str_replace( '  ', ' &nbsp;', $var ) )
 					. '&rsquo;</span><br />';
 			}
 			else if ( is_bool( $var ) ) {
@@ -111,7 +155,6 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 					$output .= '<b><i>b</i></b> ';
 				}
 				$output .= '<i>'
-					/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 					. ( ( $var === false ) ? '<span style="color: #FF0000;">false</span>' : ( ( $var === true ) ? '<span style="color: #336600;">true</span>' : __( 'undetermined', self::NAME ) ) ) . ' </i>';
 				if ( $short !== true ) {
 					$output .= ')';
@@ -157,23 +200,27 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 			}
 			else if ( is_object( $var ) ) {
 				$output .= 'Object: <br />' . $space . '(<br />';
-				if ( $short !== true ) {
-					$spacing = $space . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+				if ( is_int( self::$limit_recursion ) && $depth > self::$limit_recursion ) {
+					$output .= '... ( ' . sprintf( __( 'output limited at recursion depth %d', self::NAME ), self::$limit_recursion ) . ')<br />';
 				}
 				else {
-					$spacing = $space . '&nbsp;&nbsp;';
+					if ( $short !== true ) {
+						$spacing = $space . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+					}
+					else {
+						$spacing = $space . '&nbsp;&nbsp;';
+					}
+					$output .= self::get_object_info( $var, $escape, $spacing, $short, ++$depth );
 				}
-				$output .= self::get_object_info( $var, $escape, $spacing, $short );
 				$output .= $space . ')<br /><br />';
 			}
 			else {
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 				$output .= esc_html__( 'I haven\'t got a clue what this is: ', self::NAME ) . gettype( $var ) . '<br />';
 			}
 			if ( $space === '' ) {
 				$output .= '</div>';
 			}
-			
+
 			return $output;
 		}
 
@@ -190,10 +237,11 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @param   bool    $escape     (internal) Whether to character escape the textual output
 		 * @param   string  $space      (internal) Indentation spacing
 		 * @param   bool    $short      (internal) Short or normal annotation
+		 * @param   int     $depth      (internal) The depth of the current recursion
 		 * @return	string
 		 */
-		private static function get_object_info( $obj, $escape, $space, $short ) {
-			
+		private static function get_object_info( $obj, $escape, $space, $short, $depth = 0 ) {
+
 			$output = '';
 
 			$output .= $space . '<b><i>Class</i></b>: ' . esc_html( get_class( $obj ) ) . ' (<br />';
@@ -204,22 +252,22 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 				$spacing = $space . '&nbsp;&nbsp;';
 			}
 			$properties = get_object_vars( $obj );
-			if( is_array( $properties ) && $properties !== array() ) {
+			if ( is_array( $properties ) && $properties !== array() ) {
 				foreach ( $properties as $var => $val ) {
 					if ( is_array( $val ) ) {
 						$output .= $spacing . '<b><i>property</i></b>: ' . esc_html( $var ) . "<b><i> (array)</i></b>\n";
-						$output .= self::get_output( $val, '' , $escape, $spacing, $short );
+						$output .= self::get_output( $val, '', $escape, $spacing, $short, $depth );
 					}
 					else {
 						$output .= $spacing . '<b><i>property</i></b>: ' . esc_html( $var ) . ' = ';
-						$output .= self::get_output( $val, '' , $escape, $spacing, $short );
+						$output .= self::get_output( $val, '', $escape, $spacing, $short, $depth );
 					}
 				}
 			}
 			unset( $properties, $var, $val );
-		
+
 			$methods = get_class_methods( $obj );
-			if( is_array( $methods ) && $methods !== array() ) {
+			if ( is_array( $methods ) && $methods !== array() ) {
 				foreach ( $methods as $method ) {
 					$output .= $spacing . '<b><i>method</i></b>: ' . esc_html( $method ) . "<br />\n";
 				}
@@ -227,7 +275,7 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 			unset( $methods, $method );
 
 			$output .= $space . ')<br /><br />';
-			
+
 			return $output;
 		}
 
@@ -245,34 +293,33 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		public static function get_ooutput( $obj, $is_sub = false ) {
 			$properties = get_object_vars( $obj );
 			$methods    = get_class_methods( $obj );
-			
+
 			$output = '';
 
 			if ( $is_sub === false ) {
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 				$output .= '
 		<h2><span>' . esc_html__( 'Properties:', self::NAME ) . '</span>' . count( $properties ) . '</h2>';
 
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 				$output .= '
 		<h2><span>' . esc_html__( 'Methods:', self::NAME ) . '</span>' . count( $methods ) . '</h2>';
 			}
 
 			// Properties
 			if ( is_array( $properties ) && $properties !== array() ) {
-				$h = ( $is_sub === false ? 'h3' : 'h4' );
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
+				$h = 'h4';
+				if ( $is_sub === false ) {
+					$h = 'h3';
+				}
+
 				$output .= '
 		<' . $h . '>' . esc_html__( 'Object Properties:', self::NAME ) . '</' . $h . '>';
 
 				uksort( $properties, 'strnatcasecmp' );
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 				$output .= self::get_table( $properties, __( 'Property', self::NAME ), __( 'Value', self::NAME ) );
 			}
 
 			// Methods
 			if ( is_array( $methods ) && $methods !== array() ) {
-				/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
 				$output .= '
 		<h3>' . esc_html__( 'Object Methods:', self::NAME ) . '</h3>
 		<ul class="' . sanitize_html_class( self::NAME ) . '">';
@@ -285,7 +332,7 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 				unset( $method );
 				$output .= '</ul>';
 			}
-			
+
 			return $output;
 		}
 
@@ -313,12 +360,13 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 					$classes = $classes . ' ' . implode( ' ', $class );
 				}
 			}
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			$col1 = ( is_string( $col1 ) ? $col1 : __( 'Key', self::NAME ) );
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			$col2 = ( is_string( $col2 ) ? $col2 : __( 'Value', self::NAME ) );
+			$col1 = ( is_string( $col1 ) ) ? $col1 : __( 'Key', self::NAME );
+			$col2 = ( is_string( $col2 ) ) ? $col2 : __( 'Value', self::NAME );
 
-			$double_it = ( count( $array ) > self::TBODY_MAX ) ? true : false;
+			$double_it = false;
+			if ( count( $array ) > self::TBODY_MAX ) {
+				$double_it = true;
+			}
 
 			$return  = self::get_table_start( $col1, $col2, $classes, $double_it );
 			$return .= self::get_table_rows( $array );
@@ -330,13 +378,14 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		/**
 		 * Generate the table header
 		 *
-		 * @param   string          $col1   Label for the first table column
-		 * @param   string          $col2   Label for the second table column
-		 * @param   string|array    $class  One or more CSS classes to add to the table
+		 * @param   string        $col1      Label for the first table column
+		 * @param   string        $col2      Label for the second table column
+		 * @param   string|array  $class     One or more CSS classes to add to the table
+		 * @param   bool          $double_it Whether to repeat the table headers as table footer
 		 */
 		private static function get_table_start( $col1, $col2, $class = null, $double_it = false ) {
 			$class_string = '';
-			if( is_string( $class ) && $class !== '' ) {
+			if ( is_string( $class ) && $class !== '' ) {
 				$class_string = ' class="' . esc_attr( $class ) . '"';
 			}
 			$output = '
@@ -347,8 +396,8 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 				<th>' . esc_html( $col2 ) . '</th>
 			</tr>
 			</thead>';
-			
-			if( $double_it === true ) {
+
+			if ( $double_it === true ) {
 				$output .= '
 				<tfoot>
 				<tr>
@@ -359,7 +408,7 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 			}
 			$output .= '
 			<tbody>';
-			
+
 			return apply_filters( 'db_pretty_output_table_header', $output );
 		}
 
@@ -401,7 +450,7 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 
 			$output .= '</td>
 			</tr>';
-			
+
 			return apply_filters( 'db_pretty_output_table_body_row', $output, $key );
 		}
 
@@ -416,8 +465,8 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		</table>
 ';
 		}
-		
-		
+
+
 		/**
 		 * Print pretty output
 		 *
@@ -431,9 +480,8 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @param   string  $deprecated
 		 */
 		public static function output( $var, $title = '', $escape = false, $space = '', $short = false, $deprecated = null ) {
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_output() ' . __( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
-			echo self::get_output( $var, $title, $escape, $space, $short );
+			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_output() ' . esc_html__( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
+			echo self::get_output( $var, $title, $escape, $space, $short ); // xss: ok
 		}
 
 
@@ -450,11 +498,11 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @return	void
 		 */
 		private static function object_info( $obj, $escape, $space, $short, $deprecated = null ) {
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_object_info() ' . __( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
-			echo self::get_object_info( $obj, $escape, $space, $short );
+			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_object_info() ' . esc_html__( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
+			echo self::get_object_info( $obj, $escape, $space, $short ); // xss: ok
 		}
-		
+
+
 		/**
 		 * Helper Function specific to the Debug bar plugin
 		 * Outputs properties in a table and methods in an unordered list
@@ -467,11 +515,11 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @return	void
 		 */
 		public static function ooutput( $obj, $deprecated = null, $is_sub = false ) {
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_ooutput() ' . __( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
-			echo self::get_ooutput( $obj, $is_sub );
+			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_ooutput() ' . esc_html__( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
+			echo self::get_ooutput( $obj, $is_sub ); // xss: ok
 		}
-		
+
+
 		/**
 		 * Render the table output
 		 *
@@ -485,10 +533,11 @@ if ( ! class_exists( 'Debug_Bar_Pretty_Output' ) && class_exists( 'Debug_Bar_Pan
 		 * @return	void
 		 */
 		public static function render_table( $array, $col1, $col2, $class = null, $deprecated = null ) {
-			/* TRANSLATORS: no need to translate, unless you are translating the Debug Bar Pretty Output Helper */
-			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_table() ' . __( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
-			echo self::get_table( $array, $col1, $col2, $class );
+			_deprecated_function( __CLASS__ . '::' . __METHOD__, __CLASS__ . ' 1.3', __CLASS__ . '::get_table() ' . esc_html__( 'or even better: upgrade your Debug Bar plugins to their current version', self::NAME ) );
+			echo self::get_table( $array, $col1, $col2, $class ); // xss: ok
 		}
+
+
 	} // End of class Debug_Bar_Pretty_Output
 
 	/* Load text strings for this class */
@@ -503,10 +552,16 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 	/**
 	 * This class does nothing, just a way to keep the list of php classes out of the global namespace
 	 * You can retrieve the list by using the static variable Debug_Bar_List_PHP_Classes::$PHP_classes
-	 * List last updated: 2013-05-05
+	 * List last updated: 2015-04-18
+	 *
+	 * @todo - maybe make parts of the list flexible based on extension_loaded()
 	 */
 	class Debug_Bar_List_PHP_Classes {
 
+		/**
+		 * @var     array    List of all PHP native class names
+		 * @static
+		 */
 		public static $PHP_classes = array(
 
 			/* == "Core" == */
@@ -520,11 +575,12 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'IteratorAggregate',
 			'ArrayAccess',
 			'Serializable',
-			'Closure',
+			'Closure', // PHP 5.3.0+
+			'Generator', // PHP 5.5.0+
 
 			// Exceptions
 			'Exception',
-			'ErrorException',
+			'ErrorException', // PHP 5.1.0+
 
 
 			/* == Affecting PHPs Behaviour == */
@@ -547,14 +603,6 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 
 
 			/* == Authentication Services == */
-
-			/* == Date and Time Related Extensions == */
-			// Date/Time
-			'DateTime',
-			'DateTimeZone',
-			'DateInterval',
-			'DatePeriod',
-
 
 			/* == Command Line Specific Extensions == */
 
@@ -595,6 +643,8 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 					'MongoDB',
 					'MongoCollection',
 					'MongoCursor',
+					'MongoCursorInterface',
+					'MongoCommandCursor',
 
 					// Mongo Types
 					'MongoId',
@@ -614,6 +664,12 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 					'MongoGridFSFile',
 					'MongoGridFSCursor',
 
+					// Mongo Batch Classes
+					'MongoWriteBatch',
+					'MongoInsertBatch',
+					'MongoUpdateBatch',
+					'MongoDeleteBatch',
+
 					// Mongo Miscellaneous
 					'MongoLog',
 					'MongoPool',
@@ -626,7 +682,50 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 					'MongoCursorTimeoutException',
 					'MongoConnectionException',
 					'MongoGridFSException',
+					'MongoDuplicateKeyException',
+					'MongoProtocolException',
+					'MongoExecutionTimeoutException',
+					'MongoWriteConcernException',
 
+				// PHP driver for MongoDB
+					// MongoDB\Driver
+					'MongoDB\Driver\Manager',
+					'MongoDB\Driver\Command',
+					'MongoDB\Driver\Query',
+					'MongoDB\Driver\BulkWrite',
+					'MongoDB\Driver\WriteConcern',
+					'MongoDB\Driver\ReadPreference',
+					'MongoDB\Driver\Cursor',
+					'MongoDB\Driver\CursorId',
+					'MongoDB\Driver\Server',
+					'MongoDB\Driver\WriteConcernError',
+					'MongoDB\Driver\WriteError',
+					'MongoDB\Driver\WriteResult',
+
+					// BSON
+					'BSON\Binary',
+					'BSON\Javascript',
+					'BSON\MaxKey',
+					'BSON\MinKey',
+					'BSON\ObjectID',
+					'BSON\Regex',
+					'BSON\Timestamp',
+					'BSON\UTCDatetime',
+					'BSON\Type',
+					'BSON\Persistable',
+					'BSON\Serializable',
+					'BSON\Unserializable',
+
+					// MongoDB Exceptions
+					'MongoDB\Driver\Exception',
+					'MongoDB\Driver\RuntimeException',
+					'MongoDB\Driver\ConnectionException',
+					'MongoDB\Driver\SSLConnectionException',
+					'MongoDB\Driver\AuthenticationException',
+					'MongoDB\Driver\WriteException',
+					'MongoDB\Driver\BulkWriteException',
+					'MongoDB\Driver\WriteConcernException',
+					'MongoDB\Driver\DuplicateKeyException',
 
 				// MySQL
 					// Mysqli - MySQL Improved Extension
@@ -664,25 +763,51 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 				'TokyoTyrantException',
 
 
+			/* == Date and Time Related Extensions == */
+			// Date/Time
+			'DateTime',
+			'DateTimeImmutable', // PHP 5.5.0+
+			'DateTimeInterface', // PHP 5.5.0+
+			'DateTimeZone',
+			'DateInterval',
+			'DatePeriod',
+			
+			// HRTime
+			'HRTime\PerformanceCounter',
+			'HRTime\StopWatch',
+			'HRTime\Unit',
+
+
 			/* == File System Related Extensions == */
 			// Directories
 			'Directory',
+
+			// File Information
+			'finfo', // PHP 5.3.0+
 
 
 			/* == Human Language and Character Encoding Support == */
 			// Gender
 			'Gender\Gender',
 
-			// intl
+			// intl - since PHP 5.3.0
 			'Collator',
 			'NumberFormatter',
 			'Locale',
 			'Normalizer',
 			'MessageFormatter',
+			'IntlCalendar', // PHP 5.5.0+
+			'IntlTimeZone', // PHP 5.5.0+
 			'IntlDateFormatter',
 			'ResourceBundle',
 			'Spoofchecker',
 			'Transliterator',
+			'IntlBreakIterator', // (No version information available, might only be in Git)
+			'IntlRuleBasedBreakIterator', // (No version information available, might only be in Git)
+			'IntlCodePointBreakIterator', // (No version information available, might only be in Git)
+			'UConverter', // PHP 5.5.0+
+			'IntlException', // PHP 5.5.0+
+			'IntlIterator', // (No version information available, might only be in Git)
 
 
 			/* == Image Processing and Generation == */
@@ -738,11 +863,15 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'ImagickDraw',
 			'ImagickPixel',
 			'ImagickPixelIterator',
+			'ImagickKernel',
 
 
 			/* == Mail Related Extensions == */
 
 			/* == Mathematical Extensions == */
+			// GMP
+			'GMP', // PHP 5.6.0+
+
 			// Lapack
 			'Lapack',
 			'LapackException',
@@ -799,14 +928,26 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'EvWatcher',
 
 			// pthreads
+			'Threaded',
 			'Thread',
 			'Worker',
-			'Stackable',
+			'Collectable',
+			'Pool',
+			'Stackable', // No longer available ?
 			'Mutex',
 			'Cond',
 
+			// Sync
+			'SyncMutex',
+			'SyncSemaphore',
+			'SyncEvent',
+			'SyncReaderWriter',
+
 
 			/* == Other Basic Extensions == */
+			// FANN - Fast Artificial Neural Network
+			'FANNConnection',
+
 			// JSON - JavaScript Object Notation
 			'JsonSerializable',
 
@@ -864,8 +1005,6 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 				'OuterIterator',
 				'RecursiveIterator',
 				'SeekableIterator',
-				'SplObserver',
-				'SplSubject',
 
 				// SPL Exceptions
 				'BadFunctionCallException',
@@ -952,7 +1091,7 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 
 
 			/* == Other Services == */
-			// AMQP
+			// AMQP - Deprecated ?
 			'AMQPConnection',
 			'AMQPChannel',
 			'AMQPExchange',
@@ -961,6 +1100,9 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 
 			// chdb - Constant hash database
 			'chdb',
+
+			// Curl - Client URL Library
+			'CURLFile',
 
 			// Event
 			'Event',
@@ -1005,6 +1147,7 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 
 			// Memcached
 			'Memcached',
+			'MemcachedException',
 
 			// RRD - RRDtool
 			'RRDCreator',
@@ -1033,6 +1176,13 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'VarnishStat',
 			'VarnishLog',
 
+			// ZMQ - 0MQ messaging
+			'ZMQ',
+			'ZMQContext',
+			'ZMQSocket',
+			'ZMQPoll',
+			'ZMQDevice',
+
 
 			/* == Search Engine Extensions == */
 			// Solr - Apache Solr
@@ -1050,8 +1200,10 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'SolrParams',
 			'SolrModifiableParams',
 			'SolrQuery',
+			'SolrDisMaxQuery',
 			'SolrException',
 			'SolrClientException',
+			'SolrServerException',
 			'SolrIllegalArgumentException',
 			'SolrIllegalOperationException',
 
@@ -1116,6 +1268,13 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'SoapParam',
 			'SoapVar',
 
+			// YAR - Yet Another RPC Framework
+			'Yar_Server',
+			'Yar_Client',
+			'Yar_Concurrent_Client',
+			'Yar_Server_Exception',
+			'Yar_Client_Exception',
+
 
 			/* == Windows Only Extensions == */
 
@@ -1150,7 +1309,6 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'DOMText',
 			'DOMXPath',
 
-			'DOMCdataSection', // Not in PHP docs
 			'DOMConfiguration', // Not in PHP docs
 			'DOMDocumentType', // Not in PHP docs
 			'DOMDomError', // Not in PHP docs
@@ -1160,7 +1318,6 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			'DOMLocator', // Not in PHP docs
 			'DOMNameList', // Not in PHP docs
 			'DOMNameSpaceNode', // Not in PHP docs
-			'DOMNotation', // Not in PHP docs
 			'DOMStringExtend', // Not in PHP docs
 			'DOMStringList', // Not in PHP docs
 			'DOMTypeinfo', // Not in PHP docs
@@ -1193,6 +1350,12 @@ if ( ! class_exists( 'Debug_Bar_List_PHP_Classes' ) ) {
 			// SimpleXML
 			'SimpleXMLElement',
 			'SimpleXMLIterator',
+
+			// XMLDiff — XML diff and merge
+			'XMLDiff\Base',
+			'XMLDiff\DOM',
+			'XMLDiff\Memory',
+			'XMLDiff\File',
 
 			// XMLReader
 			'XMLReader',
